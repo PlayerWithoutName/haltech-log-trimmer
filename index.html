@@ -1,0 +1,499 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Haltech log trimmer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root {
+  --paper: #e9edf0;
+  --panel: #f7f9fa;
+  --ink: #1d2733;
+  --muted: #5b6774;
+  --line: #c9d1d8;
+  --accent: #1f5fd1;
+  --accent-ink: #ffffff;
+  --rpm: #1f5fd1;
+  --boost: #d9822b;
+  --tps: #2f9e6e;
+  --afr: #c8384a;
+  --target: #7a4fc4;
+  --window: rgba(31, 95, 209, 0.10);
+  --error: #b3261e;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  box-sizing: border-box;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #161c23; --panel: #1e252e; --ink: #e3e8ed; --muted: #97a3af;
+    --line: #333d48; --accent: #5c8ff0; --accent-ink: #0d1520;
+    --rpm: #6f9bf2; --boost: #f0a050; --window: rgba(92, 143, 240, 0.16); --error: #f2857d;
+    --tps: #5cc79a; --afr: #f06a7c; --target: #b08cf0;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #161c23; --panel: #1e252e; --ink: #e3e8ed; --muted: #97a3af;
+  --line: #333d48; --accent: #5c8ff0; --accent-ink: #0d1520;
+  --rpm: #6f9bf2; --boost: #f0a050; --window: rgba(92, 143, 240, 0.16); --error: #f2857d;
+  --tps: #5cc79a; --afr: #f06a7c; --target: #b08cf0;
+}
+*, *::before, *::after { box-sizing: inherit; }
+html { scroll-padding-top: env(safe-area-inset-top, 0px); }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font: 15px/1.5 var(--body);
+}
+.wrap { max-width: 1180px; margin: 0 auto; padding: 28px 20px 48px; }
+header { margin-bottom: 24px; }
+h1 {
+  font: 700 clamp(2rem, 5vw, 3rem)/1 var(--display);
+  letter-spacing: -0.01em; margin: 0 0 6px;
+}
+header p { margin: 0; color: var(--muted); max-width: 62ch; }
+.layout { display: grid; grid-template-columns: 320px 1fr; gap: 20px; align-items: start; }
+@media (max-width: 860px) { .layout { grid-template-columns: 1fr; } }
+.panel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+  padding: 18px;
+}
+.panel + .panel { margin-top: 16px; }
+h2 { font: 600 1.3rem/1.2 var(--display); margin: 0 0 12px; }
+label { display: block; font-weight: 500; margin-bottom: 4px; }
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+select, input[type="number"] {
+  width: 100%; font: inherit; color: var(--ink); background: var(--paper);
+  border: 1px solid var(--line); border-radius: 4px; padding: 7px 9px;
+}
+select:disabled, input:disabled { opacity: .55; }
+.row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.hint { font-size: .85rem; color: var(--muted); margin: 4px 0 0; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.drop {
+  display: block; border: 2px dashed var(--line); border-radius: 6px; padding: 18px;
+  text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+}
+.drop:hover, .drop.over { border-color: var(--accent); background: var(--window); }
+.drop strong { display: block; font: 600 1.15rem var(--display); }
+.drop span { color: var(--muted); font-size: .9rem; }
+.drop input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.fileinfo { margin-top: 10px; font-size: .9rem; color: var(--muted); word-break: break-all; }
+.error { color: var(--error); font-weight: 500; }
+
+button.primary {
+  width: 100%; font: 600 1.15rem var(--display); letter-spacing: .02em;
+  background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 4px;
+  padding: 11px; cursor: pointer;
+}
+button.primary:disabled { opacity: .45; cursor: not-allowed; }
+.status { font-size: .9rem; margin-top: 8px; min-height: 1.4em; color: var(--muted); }
+
+.stats { display: flex; flex-wrap: wrap; gap: 6px 22px; margin-bottom: 12px; }
+.stat b { font: 600 1.5rem var(--display); display: block; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { font-size: .85rem; color: var(--muted); }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .85rem; color: var(--muted); margin-bottom: 6px; }
+.legend i { display: inline-block; width: 14px; height: 3px; vertical-align: middle; margin-right: 6px; }
+.chart { width: 100%; height: 240px; display: block; }
+.table-scroll { overflow-x: auto; max-height: 420px; overflow-y: auto; border: 1px solid var(--line); border-radius: 4px; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; font-size: .9rem; }
+th, td { padding: 6px 10px; text-align: right; white-space: nowrap; border-bottom: 1px solid var(--line); }
+th { position: sticky; top: 0; background: var(--panel); font-weight: 600; }
+tbody tr:last-child td { border-bottom: 0; }
+.empty { color: var(--muted); padding: 40px 10px; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Haltech log trimmer</h1>
+    <p>Load an NSP datalog export, pick your source channels, trim to the pull, and save a clean CSV with time, RPM, TPS, boost, AFR and target AFR.</p>
+  </header>
+
+  <div class="layout">
+    <div>
+      <section class="panel">
+        <h2>Log file</h2>
+        <label class="drop" id="drop">
+          <input type="file" id="file" accept=".csv,text/csv">
+          <strong>Choose a CSV</strong>
+          <span>or drop it here</span>
+        </label>
+        <div class="fileinfo" id="fileinfo"></div>
+      </section>
+
+      <section class="panel">
+        <h2>Sources</h2>
+        <div class="field"><label for="src-tps">TPS source</label><select id="src-tps"></select></div>
+        <div class="field"><label for="src-map">MAP source</label><select id="src-map"></select></div>
+        <div class="field"><label for="src-rpm">RPM source</label><select id="src-rpm"></select></div>
+        <div class="field"><label for="src-afr">AFR source</label><select id="src-afr"></select></div>
+        <div class="field"><label for="stoich">Stoich ratio</label><input type="number" id="stoich" value="14.7" step="0.1" min="1"></div>
+        <p class="hint" id="stoich-hint">Used to turn lambda into AFR: 14.7 for gasoline, about 9.8 for E85. Target AFR always comes from column 26 (Target Lambda).</p>
+      </section>
+
+      <section class="panel">
+        <h2>Trim</h2>
+        <div class="row2">
+          <div class="field"><label for="trim-start">Start (s)</label><input type="number" id="trim-start" step="0.01" min="0" disabled></div>
+          <div class="field"><label for="trim-end">End (s)</label><input type="number" id="trim-end" step="0.01" min="0" disabled></div>
+        </div>
+        <p class="hint" id="trim-hint">Seconds from the start of the log.</p>
+      </section>
+
+      <section class="panel">
+        <button class="primary" id="download" disabled>Download CSV</button>
+        <div class="status" id="status"></div>
+      </section>
+    </div>
+
+    <div>
+      <section class="panel">
+        <h2>Overview</h2>
+        <div class="stats" id="stats"></div>
+        <div class="legend"><span><i style="background:var(--rpm)"></i>RPM</span><span><i style="background:var(--boost)"></i>Boost</span><span><i style="background:var(--tps)"></i>TPS</span><span><i style="background:var(--afr)"></i>AFR</span><span><i style="background:linear-gradient(90deg,var(--target) 0 40%,transparent 40% 60%,var(--target) 60%)"></i>Target AFR</span><span><i style="background:var(--window);height:10px"></i>Kept window</span></div>
+        <canvas class="chart" id="chart"></canvas>
+      </section>
+      <section class="panel">
+        <h2>Output preview</h2>
+        <div class="table-scroll" id="preview"><div class="empty">Load a log to see the trimmed output.</div></div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const ATM_KPA = 101.325;
+  const KPA_PER_PSI = 6.894757;
+  // Gauge boost in psi, clamped at 0 so vacuum reads as 0.
+  const boostPsi = raw => Math.max(0, (raw / 10 - ATM_KPA) / KPA_PER_PSI);
+  const TARGET_COL = 26;
+
+  // Raw Haltech values are scaled integers; these turn them into real units.
+  const SOURCES = {
+    tps: { el: "src-tps", cols: [178, 198, 199], def: 178, fallback: { 178: "Throttle Position", 198: "Drive By Wire Throttle Position", 199: "Drive By Wire Accelerator Pedal Position" } },
+    map: { el: "src-map", cols: [182, 486, 13], def: 13, fallback: { 182: "Measured Manifold Pressure", 486: "Manifold Pressure", 13: "Fuel - Load (MAP)" } },
+    rpm: { el: "src-rpm", cols: [45, 46], def: 46, fallback: { 45: "RPM", 46: "Filtered RPM" } },
+    afr: { el: "src-afr", cols: [172, 441, 315], def: 441, fallback: { 172: "Wideband O2 1", 441: "Wideband O2 Overall", 315: "WBC1 Lambda" } }
+  };
+
+  const $ = id => document.getElementById(id);
+  let log = null;      // { names: [], rows: [[t, ...raw]], fileName }
+  let output = [];     // computed rows inside trim window
+
+  // ---------- parsing ----------
+  function parseTime(s) {
+    const m = /^(\d+):(\d+):(\d+(?:\.\d+)?)$/.exec(s.trim());
+    if (!m) return NaN;
+    return (+m[1]) * 3600 + (+m[2]) * 60 + parseFloat(m[3]);
+  }
+
+  function parseLog(text) {
+    const lines = text.split(/\r?\n/);
+    const names = [];
+    let dataStart = -1;
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      if (l.startsWith("Channel : ")) names.push(l.slice(10).trim());
+      else if (/^Log\s*:/.test(l)) { dataStart = i + 1; break; }
+    }
+    if (dataStart < 0 || !names.length) {
+      throw new Error("This doesn't look like a Haltech NSP datalog: no channel list or 'Log :' line was found.");
+    }
+    const rows = [];
+    let first = null, wrap = 0, prev = -Infinity;
+    for (let i = dataStart; i < lines.length; i++) {
+      const l = lines[i].trim();
+      if (!l) continue;
+      const f = l.split(",");
+      let t = parseTime(f[0]);
+      if (isNaN(t)) continue;
+      t += wrap;
+      if (t < prev - 1) { wrap += 86400; t += 86400; }   // crossed midnight
+      prev = t;
+      if (first === null) first = t;
+      const row = new Array(f.length);
+      row[0] = t - first;
+      for (let c = 1; c < f.length; c++) row[c] = Number(f[c]);
+      rows.push(row);
+    }
+    if (!rows.length) throw new Error("The channel list was found, but there are no data rows after it.");
+    return { names, rows };
+  }
+
+  // ---------- auto trim ----------
+  const WOT_TPS = 80, WOT_MIN_S = 1, WOT_PAD_S = 0.2;
+  // First run of consecutive samples with TPS > 80% lasting more than 1 s,
+  // padded by 0.2 s on each side. Returns null if no run qualifies.
+  function findWotWindow(rows, tpsCol) {
+    const dur = rows[rows.length - 1][0];
+    let runStart = null, runEnd = null;
+    const close = () => {
+      if (runStart !== null && runEnd - runStart > WOT_MIN_S) {
+        return { start: Math.max(0, runStart - WOT_PAD_S), end: Math.min(dur, runEnd + WOT_PAD_S), runStart, runEnd };
+      }
+      runStart = runEnd = null;
+      return null;
+    };
+    for (const r of rows) {
+      if (r[tpsCol] / 10 > WOT_TPS) {
+        if (runStart === null) runStart = r[0];
+        runEnd = r[0];
+      } else {
+        const w = close();
+        if (w) return w;
+      }
+    }
+    return close();
+  }
+
+  // ---------- dropdowns ----------
+  function fillSelects() {
+    for (const key in SOURCES) {
+      const s = SOURCES[key], sel = $(s.el), prevVal = sel.value;
+      sel.innerHTML = "";
+      for (const col of s.cols) {
+        const name = log ? (log.names[col - 1] || "missing in this log") : s.fallback[col];
+        const opt = new Option(`${name} (col ${col})`, col);
+        if (log && !log.names[col - 1]) opt.disabled = true;
+        sel.add(opt);
+      }
+      if (prevVal && [...sel.options].some(o => o.value === prevVal && !o.disabled)) sel.value = prevVal;
+      else {
+        const opts = [...sel.options].filter(o => !o.disabled);
+        const pick = opts.find(o => +o.value === s.def) || opts[0];
+        if (pick) sel.value = pick.value;
+      }
+      sel.disabled = !log;
+    }
+  }
+
+  // ---------- calculation ----------
+  const fmt = (v, d) => Number.isFinite(v) ? v.toFixed(d).replace(/^-(0\.?0*)$/, "$1") : "";
+
+  function compute() {
+    if (!log) return;
+    const cTps = +$("src-tps").value, cMap = +$("src-map").value,
+          cRpm = +$("src-rpm").value, cAfr = +$("src-afr").value;
+    let stoich = parseFloat($("stoich").value);
+    const stoichOk = Number.isFinite(stoich) && stoich > 0;
+    $("stoich-hint").classList.toggle("error", !stoichOk);
+    if (!stoichOk) stoich = NaN;
+    let start = parseFloat($("trim-start").value), end = parseFloat($("trim-end").value);
+    const dur = log.rows[log.rows.length - 1][0];
+    if (!Number.isFinite(start)) start = 0;
+    if (!Number.isFinite(end)) end = dur;
+
+    const hint = $("trim-hint");
+    if (start >= end) {
+      hint.innerHTML = `<span class="error">Start must be before end.</span>`;
+      output = [];
+    } else {
+      hint.textContent = `Seconds from the start of the log (0 to ${dur.toFixed(2)}).`;
+      output = log.rows
+        .filter(r => r[0] >= start - 1e-9 && r[0] <= end + 1e-9)
+        .map(r => ({
+          time: Math.max(0, r[0] - start),
+          rpm: r[cRpm],
+          tps: r[cTps] / 10,
+          boost: boostPsi(r[cMap]),
+          afr: r[cAfr] / 1000 * stoich,
+          target: r[TARGET_COL] / 1000 * stoich
+        }));
+    }
+    renderStats(start, end, dur);
+    renderPreview();
+    drawChart(start, end, cRpm, cMap, cTps, cAfr, stoich);
+    $("download").disabled = output.length === 0 || !stoichOk;
+    $("status").textContent = "";
+  }
+
+  // ---------- rendering ----------
+  function renderStats(start, end, dur) {
+    const n = output.length;
+    const maxOf = k => n ? Math.max(...output.map(r => r[k])) : NaN;
+    const minOf = k => n ? Math.min(...output.map(r => r[k])) : NaN;
+    const items = [
+      [n, "rows kept"],
+      [`${fmt(Math.max(0, Math.min(end, dur) - Math.max(0, start)), 2)} s`, "window"],
+      [fmt(maxOf("rpm"), 0), "peak RPM"],
+      [`${fmt(maxOf("boost"), 1)} psi`, "peak boost"],
+      [`${fmt(minOf("afr"), 2)}`, "richest AFR"]
+    ];
+    $("stats").innerHTML = items.map(([v, l]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join("");
+  }
+
+  const HEAD = ["Time", "RPM", "TPS", "Boost", "AFR", "Target AFR"];
+  const rowCells = r => [fmt(r.time, 3), fmt(r.rpm, 0), fmt(r.tps, 1), fmt(r.boost, 2), fmt(r.afr, 2), fmt(r.target, 2)];
+
+  function renderPreview() {
+    const el = $("preview");
+    if (!output.length) { el.innerHTML = `<div class="empty">No rows in the selected window.</div>`; return; }
+    const body = output.map(r => `<tr>${rowCells(r).map(c => `<td>${c}</td>`).join("")}</tr>`).join("");
+    el.innerHTML = `<table><thead><tr>${HEAD.map(h => `<th>${h}</th>`).join("")}</tr></thead><tbody>${body}</tbody></table>`;
+  }
+
+  function drawChart(start, end, cRpm, cMap, cTps, cAfr, stoich) {
+    const cv = $("chart"), dpr = window.devicePixelRatio || 1;
+    const w = cv.clientWidth, h = cv.clientHeight;
+    cv.width = w * dpr; cv.height = h * dpr;
+    const ctx = cv.getContext("2d");
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    if (!log) return;
+    const css = getComputedStyle(document.documentElement);
+    const col = n => css.getPropertyValue(n).trim();
+    const pad = { l: 8, r: 8, t: 8, b: 22 };
+    const rows = log.rows, dur = rows[rows.length - 1][0] || 1;
+    const X = t => pad.l + (t / dur) * (w - pad.l - pad.r);
+
+    // kept window
+    if (start < end) {
+      ctx.fillStyle = col("--window");
+      const x0 = X(Math.max(0, start)), x1 = X(Math.min(dur, end));
+      ctx.fillRect(x0, pad.t, x1 - x0, h - pad.t - pad.b);
+    }
+    // Each series gets its own vertical scale; AFR and Target AFR share one so they line up.
+    const range = arr => {
+      const f = arr.filter(Number.isFinite);
+      let lo = Math.min(...f), hi = Math.max(...f);
+      if (!f.length) { lo = 0; hi = 1; }
+      if (hi === lo) { hi += 1; lo -= 1; }
+      return [lo, hi];
+    };
+    const series = (vals, color, [lo, hi], dash = []) => {
+      const Y = v => pad.t + (1 - (v - lo) / (hi - lo)) * (h - pad.t - pad.b);
+      ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.setLineDash(dash); ctx.beginPath();
+      let pen = false;
+      rows.forEach((r, i) => {
+        if (!Number.isFinite(vals[i])) { pen = false; return; }
+        const x = X(r[0]), y = Y(vals[i]);
+        pen ? ctx.lineTo(x, y) : ctx.moveTo(x, y); pen = true;
+      });
+      ctx.stroke(); ctx.setLineDash([]);
+    };
+    const s = Number.isFinite(stoich) ? stoich : NaN;
+    const tps = rows.map(r => r[cTps] / 10);
+    const boost = rows.map(r => boostPsi(r[cMap]));
+    const rpm = rows.map(r => r[cRpm]);
+    const afr = rows.map(r => r[cAfr] / 1000 * s);
+    const target = rows.map(r => r[TARGET_COL] / 1000 * s);
+    const afrRange = range(afr.concat(target));
+    series(tps, col("--tps"), [0, 100]);
+    series(boost, col("--boost"), range(boost));
+    series(target, col("--target"), afrRange, [5, 4]);
+    series(afr, col("--afr"), afrRange);
+    series(rpm, col("--rpm"), range(rpm));
+
+    // time axis
+    ctx.fillStyle = col("--muted"); ctx.font = `12px ${col("--body")}`;
+    ctx.textBaseline = "bottom";
+    const step = dur > 120 ? 30 : dur > 40 ? 10 : dur > 12 ? 5 : 1;
+    for (let t = 0; t <= dur; t += step) {
+      ctx.textAlign = t === 0 ? "left" : "center";
+      ctx.fillText(`${t}s`, X(t), h - 4);
+    }
+  }
+
+  // ---------- file loading ----------
+  function loadFile(file) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = parseLog(reader.result);
+        log = { ...parsed, fileName: file.name };
+        const dur = log.rows[log.rows.length - 1][0];
+        $("fileinfo").textContent = `${file.name}: ${log.names.length} channels, ${log.rows.length} rows, ${dur.toFixed(2)} s`;
+        $("trim-start").disabled = $("trim-end").disabled = false;
+        $("trim-start").max = $("trim-end").max = dur.toFixed(3);
+        fillSelects();
+        const w = findWotWindow(log.rows, +$("src-tps").value);
+        $("trim-start").value = (w ? w.start : 0).toFixed(3);
+        $("trim-end").value = (w ? w.end : dur).toFixed(3);
+        compute();
+        $("trim-hint").textContent = w
+          ? `Auto-set to the first throttle-over-${WOT_TPS}% run (${w.runStart.toFixed(2)} to ${w.runEnd.toFixed(2)} s) plus ${WOT_PAD_S} s padding.`
+          : `No throttle-over-${WOT_TPS}% run longer than ${WOT_MIN_S} s found, so the full log is kept.`;
+      } catch (e) {
+        log = null; output = [];
+        $("fileinfo").innerHTML = `<span class="error"></span>`;
+        $("fileinfo").firstChild.textContent = e.message;
+        $("trim-start").disabled = $("trim-end").disabled = true;
+        $("download").disabled = true;
+        fillSelects();
+        $("stats").innerHTML = "";
+        $("preview").innerHTML = `<div class="empty">Load a log to see the trimmed output.</div>`;
+        drawChart();
+      }
+    };
+    reader.onerror = () => { $("fileinfo").innerHTML = `<span class="error">The file couldn't be read.</span>`; };
+    reader.readAsText(file);
+  }
+
+  $("file").addEventListener("change", e => loadFile(e.target.files[0]));
+  const drop = $("drop");
+  ["dragenter", "dragover"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", e => loadFile(e.dataTransfer.files[0]));
+
+  for (const key in SOURCES) $(SOURCES[key].el).addEventListener("change", compute);
+  ["trim-start", "trim-end", "stoich"].forEach(id => $(id).addEventListener("input", compute));
+  window.addEventListener("resize", () => log && compute());
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => log && compute());
+
+  // ---------- download ----------
+  function buildCsv() {
+    return [HEAD.join(","), ...output.map(r => rowCells(r).join(","))].join("\r\n") + "\r\n";
+  }
+
+  // Inside claude.ai the page saves through the downloads capability;
+  // opened as a plain local file it falls back to a normal browser download.
+  let downloadsApi;   // undefined = not looked up yet, null = unavailable
+  async function getDownloads() {
+    if (downloadsApi !== undefined) return downloadsApi;
+    try {
+      downloadsApi = (window.claude && typeof window.claude.use === "function")
+        ? await window.claude.use("downloads") : null;
+    } catch { downloadsApi = null; }
+    return downloadsApi;
+  }
+  getDownloads();
+
+  $("download").addEventListener("click", async () => {
+    if (!output.length) return;
+    const base = (log.fileName || "log").replace(/\.csv$/i, "");
+    const filename = `${base}_trimmed.csv`;
+    const data = buildCsv();
+    const status = $("status");
+    const dl = await getDownloads();
+    if (dl) {
+      try {
+        await dl.save({ filename, data });
+        status.textContent = `Saved ${filename} (${output.length} rows).`;
+      } catch (e) {
+        status.textContent = e && e.code === "declined" ? "Download cancelled." :
+          e && e.code === "rate_limited" ? "A save prompt is already open. Try again in a moment." :
+          "Downloads aren't available in this view.";
+      }
+      return;
+    }
+    const url = URL.createObjectURL(new Blob([data], { type: "text/csv" }));
+    const a = document.createElement("a");
+    a.href = url; a.download = filename; document.body.appendChild(a); a.click();
+    a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+    status.textContent = `Saved ${filename} (${output.length} rows).`;
+  });
+
+  fillSelects();
+})();
+</script>
+</body>
+</html>
